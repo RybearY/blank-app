@@ -174,7 +174,7 @@ if st.session_state["start_button_clicked"] == True:
         df_results = pd.DataFrame(results).reset_index(drop=True)
 
         def highlight_rows(row):
-            color = 'background-color: lightgreen;' if row["Valid"] == "O" else 'background-color: lightcoral;'
+            color = 'background-color: lightgreen;color: black;' if row["Valid"] == "O" else 'background-color: lightcoral;color: black;'
             return [color] * len(row)
 
         styled_df_results = df_results.style.apply(highlight_rows, axis=1).format(precision=2)
