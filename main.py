@@ -22,7 +22,7 @@ required_format = st.sidebar.selectbox("Format", ["WAV", "MP3", "AAC"], disabled
 required_channels = st.sidebar.selectbox("Channels", [1, 2], disabled=st.session_state.disabled)
 required_sample_rate = st.sidebar.selectbox("Sample Rate (Hz)", [44100, 48000, 96000, 192000], disabled=st.session_state.disabled)
 required_bit_depth = st.sidebar.selectbox("Bit Depth", [16, 24, 32, "32 (float)", "64 (float)"], disabled=st.session_state.disabled)
-required_noise_floor = st.sidebar.slider("Noise Floor (dB)", min_value=-100, max_value=0, value=-60, disabled=st.session_state.disabled)
+required_noise_floor = st.sidebar.slider("Noise Floor (dBFS)", min_value=-100, max_value=0, value=-60, disabled=st.session_state.disabled)
 required_stereo_status = st.sidebar.selectbox(
     "Stereo Status", ["Dual Mono", "Mono", "True Stereo", "Joint Stereo"], disabled=st.session_state.disabled
 )
@@ -92,13 +92,24 @@ if st.session_state["start_button_clicked"] == True:
                     data, samplerate = sf.read(buffer) # soundfile은 buffer 객체에서 읽기 지원
                     if len(data.shape) > 1:  # 스테레오 파일인 경우 첫 번째 채널만 사용
                         data = data[:, 0]
-                    if np.any(data):
-                        noise_floor = 20 * np.log10(np.mean(np.abs(data)))
+
+                    # 2. 오디오 데이터 정규화 (필요한 경우) - 이미 -1 ~ +1 범위라고 가정
+                    # data = data / np.max(np.abs(data)) # 최대값으로 정규화 (이미 정규화되어 있다고 가정)
+
+                    # 3. RMS (Root Mean Square) 계산
+                    rms = np.sqrt(np.mean(data**2))
+
+                    # 4. RMS 레벨을 dBFS (Full Scale 데시벨) 단위로 변환
+                    if rms > 0: # 0으로 나누는 오류 방지
+                        noise_floor_dbfs = 20 * np.log10(rms)
                     else:
-                        noise_floor = -np.inf
-                    return round(noise_floor, 2)
+                        noise_floor_dbfs = -np.inf # 0 RMS는 -무한대 dBFS
+
+                    return round(noise_floor_dbfs, 2)
+
                 except Exception as e:
-                    return "Error" # 또는 None, -999 등 오류를 나타내는 값 반환
+                    print(f"오류 발생: {e}")
+                    return None
 
 
             def check_stereo_status_from_buffer(buffer):
@@ -145,7 +156,7 @@ if st.session_state["start_button_clicked"] == True:
                 "Bit Depth": properties["Bit Depth"] if properties["Bit Depth"] != "Error" else "Error",
                 "Channel(1)": properties["Channels"] if properties["Channels"] != "Error" else "Error",
                 "Channel(2)": stereo_status,
-                "Noise Floor (dB)": noise_floor_val if isinstance(noise_floor_val, (int, float)) else "Error",
+                "Noise Floor (dBFS)": noise_floor_val if isinstance(noise_floor_val, (int, float)) else "Error",
                 "Time (sec)": properties["Duration (seconds)"] if properties["Duration (seconds)"] != "Error (Processing Failed)" else "Error",
                 "Valid": "O" if matches_all else "X",
             }
@@ -180,7 +191,7 @@ if st.session_state["start_button_clicked"] == True:
             with col2:
                 try:
                     audio_buffer = BytesIO(uploaded_file.getvalue())
-                    data, samplerate = sf.read(audio_buffer, dtype="int16")
+                    data, samplerate = sf.read(audio_buffer)
 
                     if data.ndim > 1:
                         data = data[:, 0]
@@ -188,7 +199,7 @@ if st.session_state["start_button_clicked"] == True:
                     fig, ax = plt.subplots(figsize=(10, 2))
                     time_axis = np.linspace(0, len(data) / samplerate, num=len(data))
                     ax.plot(time_axis, data, color='royalblue', linewidth=0.7)
-                    ax.axhline(y=required_noise_floor, color='red', linestyle='--', label="Required Noise Floor")
+                    ax.axhline(y=10**(required_noise_floor/20), color='red', linestyle='--', label="Required Noise Floor")
 
                     ax.set_xticks(np.arange(0, max(time_axis), step=5))
                     ax.set_title("Waveform with Noise Floor")
