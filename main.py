@@ -21,7 +21,7 @@ st.sidebar.header("파일 요구사항 설정")
 required_format = st.sidebar.selectbox("Format", ["WAV", "MP3", "AAC"], disabled=st.session_state.disabled)
 required_channels = st.sidebar.selectbox("Channels", [1, 2], disabled=st.session_state.disabled)
 required_sample_rate = st.sidebar.selectbox("Sample Rate (Hz)", [44100, 48000, 96000, 192000], disabled=st.session_state.disabled)
-required_bit_depth = st.sidebar.selectbox("Bit Depth", [16, 24, 32], disabled=st.session_state.disabled)
+required_bit_depth = st.sidebar.selectbox("Bit Depth", [16, 24, 32, "32 (float)", "64 (float)"], disabled=st.session_state.disabled)
 required_noise_floor = st.sidebar.slider("Noise Floor (dB)", min_value=-100, max_value=0, value=-60, disabled=st.session_state.disabled)
 required_stereo_status = st.sidebar.selectbox(
     "Stereo Status", ["Dual Mono", "Mono", "True Stereo", "Joint Stereo"], disabled=st.session_state.disabled
@@ -61,6 +61,8 @@ if st.session_state["start_button_clicked"] == True:
                     bit_depth = 'Unknown'
                     if data.dtype == 'int16':
                         bit_depth = 16
+                    elif data.dtype == 'int24':
+                        bit_depth == 24
                     elif data.dtype == 'int32':
                         bit_depth = 32
                     elif data.dtype == 'float32':
