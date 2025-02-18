@@ -16,7 +16,7 @@ if not st.session_state.get("disabled"):
 if not st.session_state.get("start_button_clicked"):
     st.session_state["start_button_clicked"] = False
 
-# **파일 요구사항 설정 (기존 코드와 동일)**
+# 파일 요구사항 설정 (기존 코드와 동일)
 st.sidebar.header("파일 요구사항 설정")
 required_format = st.sidebar.selectbox("Format", ["WAV", "MP3", "AAC"], disabled=st.session_state.disabled)
 required_channels = st.sidebar.selectbox("Channels", [1, 2], disabled=st.session_state.disabled)
@@ -47,7 +47,7 @@ if st.session_state["start_button_clicked"] == True:
         "오디오 파일을 업로드하세요 (WAV 형식 등 여러 개 가능)", type=["wav", "mp3", "aac"], accept_multiple_files=True
     )
 
-    # **오디오 처리 Generator 함수**
+    # 오디오 처리 Generator 함수
     def process_audio_files_generator(uploaded_files):
         for uploaded_file in uploaded_files:
             # Buffer 객체 얻기
@@ -56,7 +56,7 @@ if st.session_state["start_button_clicked"] == True:
             # 오디오 속성 분석 함수 (buffer 객체 입력으로 수정)
             def get_audio_properties_from_buffer(buffer):
                 try:
-                    data, samplerate = sf.read(buffer, dtype="int16") # soundfile은 buffer 객체에서 읽기 지원
+                    data, samplerate = sf.read(buffer) # soundfile은 buffer 객체에서 읽기 지원
                     bit_depth = 'Unknown'
                     if data.dtype == 'int16':
                         bit_depth = 16
@@ -64,6 +64,8 @@ if st.session_state["start_button_clicked"] == True:
                         bit_depth = 32
                     elif data.dtype == 'float32':
                         bit_depth = '32 (float)'
+                    elif data.dtype == 'float64':
+                        bit_depth = '64 (float)'
 
                     channels = data.shape[1] if len(data.shape) > 1 else 1
                     duration = len(data) / samplerate
