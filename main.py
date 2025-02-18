@@ -42,6 +42,7 @@ if required_new_button:
     st.rerun()
     
 if st.session_state["start_button_clicked"] == True:
+    st.header("1. 파일 업로드", divider="red")
     # 여러 파일 업로드 위젯 (기존 코드와 동일)
     uploaded_files = st.file_uploader(
         "오디오 파일을 업로드하세요 (WAV 형식 등 여러 개 가능)", type=["wav", "mp3", "aac"], accept_multiple_files=True
@@ -155,7 +156,8 @@ if st.session_state["start_button_clicked"] == True:
             results.append(result)
 
         # **결과를 표 형태로 출력 (기존 코드와 동일)**
-        st.subheader("파일 검증 결과")
+        st.header("2. 파일 검증 결과", divider="red")
+        st.subheader("2.1 결과표", divider="orange")
         df_results = pd.DataFrame(results).reset_index(drop=True)
 
         def highlight_rows(row):
@@ -165,9 +167,10 @@ if st.session_state["start_button_clicked"] == True:
         styled_df_results = df_results.style.apply(highlight_rows, axis=1).format(precision=2)
         st.table(styled_df_results)
 
+        st.subheader("2.2 미리듣기 및 파형", divider="orange")
         for idx, uploaded_file in enumerate(uploaded_files):
             # **미리 듣기 (기존 코드와 동일)**
-            st.subheader(f"{idx}. {uploaded_file.name}")
+            st.write(f"##### {idx}. {uploaded_file.name}")
             # **노이즈 음파 시각화 (buffer 객체 사용, torchaudio 사용하는 예시)**
             col1, col2 = st.columns([0.3, 0.7], vertical_alignment="center")
             with col1:
@@ -194,6 +197,7 @@ if st.session_state["start_button_clicked"] == True:
 
                 except Exception as e:
                     st.error(f"음파 시각화 오류: (음파 시각화 실패. 파일 형식 또는 코덱을 확인하세요.)")
+            st.divider()
 
 
     else:
