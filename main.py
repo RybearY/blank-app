@@ -112,29 +112,46 @@ if st.session_state["start_button_clicked"] == True:
                         "Duration (seconds)": "Error (Processing Failed)"
                     }
 
-            def calculate_noise_floor_from_buffer(buffer):
+            def calculate_noise_floor_from_buffer(buffer, silence_threshold_db=-60, frame_length=2048, hop_length=512):
                 try:
-                    data, samplerate = sf.read(buffer) # soundfile은 buffer 객체에서 읽기 지원
-                    if len(data.shape) > 1:  # 스테레오 파일인 경우 첫 번째 채널만 사용
-                        data = data[:, 0]
-
-                    # 2. 오디오 데이터 정규화 (필요한 경우) - 이미 -1 ~ +1 범위라고 가정
-                    # data = data / np.max(np.abs(data)) # 최대값으로 정규화 (이미 정규화되어 있다고 가정)
-
-                    # 3. RMS (Root Mean Square) 계산
-                    rms = np.sqrt(np.mean(data**2))
-
-                    # 4. RMS 레벨을 dBFS (Full Scale 데시벨) 단위로 변환
-                    if rms > 0: # 0으로 나누는 오류 방지
-                        noise_floor_dbfs = 20 * np.log10(rms)
-                    else:
-                        noise_floor_dbfs = -np.inf # 0 RMS는 -무한대 dBFS
-
-                    return round(noise_floor_dbfs, 2)
-
-                except Exception as e:
-                    print(f"오류 발생: {e}")
+                    data, sr = sf.read(buffer)  # 오디오 파일 읽기
+                except sf.LibsndfileError as e:
+                    print(f"Error reading audio file: {e}")
                     return None
+
+                # 다채널 오디오라면, 모노로 변환 (선택 사항)
+                if data.ndim > 1:
+                    y = np.mean(data, axis=1)
+                else:
+                    y = data
+
+                # 프레임 단위로 RMS 계산
+                num_frames = (len(y) - frame_length) // hop_length + 1
+                rms_values = np.zeros(num_frames)
+
+                for i in range(num_frames):
+                    start = i * hop_length
+                    end = start + frame_length
+                    frame = y[start:end]
+                    rms_values[i] = np.sqrt(np.mean(frame**2))
+
+                # dB 스케일로 변환 (무음 구간 찾기 위해)
+                epsilon = 1e-12
+                rms_db = 20 * np.log10((rms_values / np.max(np.abs(y))) + epsilon)
+
+                # 무음 구간 찾기
+                silent_frames = rms_db < silence_threshold_db
+
+                # 무음 구간 RMS 평균 (진폭 스케일) -> dBFS로 변환
+                if np.any(silent_frames):
+                    noise_floor_rms = np.mean(rms_values[silent_frames])
+                    noise_floor_dbfs = 20 * np.log10(noise_floor_rms / np.max(np.abs(y)) + epsilon)
+                else:
+                    print("Warning: No silent frames found. Using minimum RMS.")
+                    noise_floor_rms = np.min(rms_values)
+                    noise_floor_dbfs = 20 * np.log10(noise_floor_rms / np.max(np.abs(y)) + epsilon)
+
+                return round(noise_floor_dbfs, 2)
 
 
             def check_stereo_status_from_buffer(buffer):
@@ -211,7 +228,7 @@ if st.session_state["start_button_clicked"] == True:
                     green if row["Bit Depth"] == str(st.session_state["required_bit_depth"]) else red,
                     green if row["Channels"] == st.session_state["required_channels"] else red,
                     green if row["Stereo Status"] == st.session_state["required_stereo_status"] else red,
-                    green if row["Noise Floor (dBFS)"] >= st.session_state["required_noise_floor"] else red
+                    green if row["Noise Floor (dBFS)"] < st.session_state["required_noise_floor"] else red
                 ]
             return [None] * 3 + colors
 
