@@ -13,7 +13,7 @@ st.markdown("업로드된 오디오 파일의 속성을 검증하고, 요구사�
 
 with st.container(border=True):
     st.markdown("##### 사용 방법 (How to use)")
-    st.markdown('''1. 파일 요구사항 설정값 선택 (Select the file requirement settings)\n2. Save 버튼 클릭 (Click the Save button)\n3. 오디오 파일 업로드 (Upload an audio files)\n4. 결과 확인 (Check the results)''')
+    st.markdown('''1. 파일 요구사항 설정값 선택 (Select the file requirement settings)\n2. Save 버튼 클릭 (Click the Save button)\n3. 오디오 파일 업로드 (Upload audio files)\n4. 결과 확인 (Check the results)''')
     st.markdown("새로운 파일 요구사항 설정 : Reset 버튼 클릭 (New file requirement settings: Click the Reset button)")
 
 if not st.session_state.get("disabled"):
