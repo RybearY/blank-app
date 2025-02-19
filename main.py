@@ -9,15 +9,33 @@ from io import BytesIO
 st.set_page_config(page_title="Blank App", layout="wide")
 
 st.title("Audio Requirements Validator")
-st.write("업로드된 오디오 파일의 속성을 검증하고, 요구사항과 비교하여 결과를 제공합니다.")
+st.markdown("업로드된 오디오 파일의 속성을 검증하고, 요구사항과 비교하여 결과를 제공합니다. (Verify the attributes of the uploaded audio file, compare them against the requirements, and provide the results.)")
+
+with st.container(border=True):
+    st.markdown("##### 사용 방법 (How to use)")
+    st.markdown('''1. 파일 요구사항 설정값 선택 (Select the file requirement settings)\n2. Save 버튼 클릭 (Click the Save button)\n3. 오디오 파일 업로드 (Upload an audio files)\n4. 결과 확인 (Check the results)''')
+    st.markdown("새로운 파일 요구사항 설정 : Reset 버튼 클릭 (New file requirement settings: Click the Reset button)")
 
 if not st.session_state.get("disabled"):
     st.session_state.disabled = False
 if not st.session_state.get("start_button_clicked"):
     st.session_state["start_button_clicked"] = False
 
+if not st.session_state.get("required_format"):
+    st.session_state["required_format"] = None
+if not st.session_state.get("required_channels"):
+    st.session_state["required_channels"] = None
+if not st.session_state.get("required_sample_rate"):
+    st.session_state["required_sample_rate"] = None
+if not st.session_state.get("required_bit_depth"):
+    st.session_state["required_bit_depth"] = None
+if not st.session_state.get("required_noise_floor"):
+    st.session_state["required_noise_floor"] = None
+if not st.session_state.get("required_stereo_status"):
+    st.session_state["required_stereo_status"] = None
+
 # 파일 요구사항 설정 (기존 코드와 동일)
-st.sidebar.header("파일 요구사항 설정")
+st.sidebar.header("파일 요구사항 설정 (File requirements settings)")
 required_format = st.sidebar.selectbox("Format", ["WAV", "MP3", "AAC"], disabled=st.session_state.disabled)
 required_channels = st.sidebar.selectbox("Channels", [1, 2], disabled=st.session_state.disabled)
 required_sample_rate = st.sidebar.selectbox("Sample Rate (Hz)", [44100, 48000, 96000, 192000], disabled=st.session_state.disabled)
@@ -28,11 +46,18 @@ required_stereo_status = st.sidebar.selectbox(
 )
 sidebar_col1, sidebar_col2 = st.sidebar.columns(2)
 with sidebar_col1:
-    required_start_button = st.sidebar.button("Start", key="start_button", use_container_width=True)
+    required_start_button = st.sidebar.button("Save", key="start_button", use_container_width=True)
 with sidebar_col2:
-    required_new_button = st.sidebar.button("New", key="new_button", use_container_width=True)
+    required_new_button = st.sidebar.button("Reset", key="new_button", use_container_width=True)
 
 if required_start_button:
+    st.session_state["required_format"] = required_format
+    st.session_state["required_channels"] = required_channels
+    st.session_state["required_sample_rate"] = required_sample_rate
+    st.session_state["required_bit_depth"] = required_bit_depth
+    st.session_state["required_noise_floor"] = required_noise_floor
+    st.session_state["required_stereo_status"] = required_stereo_status
+
     st.session_state["start_button_clicked"] = True
     st.session_state.disabled = True
     st.rerun()
@@ -42,10 +67,10 @@ if required_new_button:
     st.rerun()
     
 if st.session_state["start_button_clicked"] == True:
-    st.header("1. 파일 업로드", divider="red")
+    st.header("1. 파일 업로드 (1. Upload file)", divider="red")
     # 여러 파일 업로드 위젯 (기존 코드와 동일)
     uploaded_files = st.file_uploader(
-        "오디오 파일을 업로드하세요 (WAV 형식 등 여러 개 가능)", type=["wav", "mp3", "aac"], accept_multiple_files=True
+        "오디오 파일(wav, mp3, aac)을 업로드하세요. (Upload audio files (wav, mp3, aac).)", type=["wav", "mp3", "aac"], accept_multiple_files=True
     )
 
     # 오디오 처리 Generator 함수
@@ -150,15 +175,15 @@ if st.session_state["start_button_clicked"] == True:
 
             # 결과 yield (결과 데이터 생성 방식은 기존 코드와 유사)
             yield {
+                "Valid": "O" if matches_all else "X",
                 "Name": uploaded_file.name,
-                "Format": required_format if matches_format else f"Mismatch ({uploaded_file.name.split('.')[-1].upper()})",
+                "Time (sec)": properties["Duration (seconds)"] if properties["Duration (seconds)"] != "Error (Processing Failed)" else "Error",
+                "Format": required_format if matches_format else f"{uploaded_file.name.split('.')[-1].upper()}",
                 "Sample Rate": f"{properties['Sample Rate']} Hz" if properties["Sample Rate"] != "Error" else "Error",
                 "Bit Depth": properties["Bit Depth"] if properties["Bit Depth"] != "Error" else "Error",
-                "Channel(1)": properties["Channels"] if properties["Channels"] != "Error" else "Error",
-                "Channel(2)": stereo_status,
+                "Channels": properties["Channels"] if properties["Channels"] != "Error" else "Error",
+                "Stereo Status": stereo_status,
                 "Noise Floor (dBFS)": noise_floor_val if isinstance(noise_floor_val, (int, float)) else "Error",
-                "Time (sec)": properties["Duration (seconds)"] if properties["Duration (seconds)"] != "Error (Processing Failed)" else "Error",
-                "Valid": "O" if matches_all else "X",
             }
 
     if uploaded_files:
@@ -169,18 +194,31 @@ if st.session_state["start_button_clicked"] == True:
             results.append(result)
 
         # **결과를 표 형태로 출력 (기존 코드와 동일)**
-        st.header("2. 파일 검증 결과", divider="red")
-        st.subheader("2.1 결과표", divider="orange")
+        st.header("2. 파일 검증 결과 (File verification results)", divider="red")
+        st.subheader("2.1 결과표 (Results table)", divider="orange")
         df_results = pd.DataFrame(results).reset_index(drop=True)
 
         def highlight_rows(row):
-            color = 'background-color: lightgreen;color: black;' if row["Valid"] == "O" else 'background-color: lightcoral;color: black;'
-            return [color] * len(row)
+            green = 'background-color: lightgreen;color: black;'
+            red = 'background-color: lightcoral;color: black;'
+
+            if row['Valid'] == "O":
+                colors = [green] * 6
+            else:
+                colors = [
+                    green if row["Format"] == st.session_state["required_format"] else red,
+                    green if row["Sample Rate"] == f'{st.session_state["required_sample_rate"]} Hz' else red,
+                    green if row["Bit Depth"] == str(st.session_state["required_bit_depth"]) else red,
+                    green if row["Channels"] == st.session_state["required_channels"] else red,
+                    green if row["Stereo Status"] == st.session_state["required_stereo_status"] else red,
+                    green if row["Noise Floor (dBFS)"] >= st.session_state["required_noise_floor"] else red
+                ]
+            return [None] * 3 + colors
 
         styled_df_results = df_results.style.apply(highlight_rows, axis=1).format(precision=2)
         st.table(styled_df_results)
 
-        st.subheader("2.2 미리듣기 및 파형", divider="orange")
+        st.subheader("2.2 미리듣기 및 파형 (Preview and waveform)", divider="orange")
         for idx, uploaded_file in enumerate(uploaded_files):
             # **미리 듣기 (기존 코드와 동일)**
             st.write(f"##### {idx}. {uploaded_file.name}")
@@ -209,9 +247,9 @@ if st.session_state["start_button_clicked"] == True:
                     st.pyplot(fig, use_container_width=True)
 
                 except Exception as e:
-                    st.error(f"음파 시각화 오류: (음파 시각화 실패. 파일 형식 또는 코덱을 확인하세요.)")
+                    st.error(f"음파 시각화 오류: 음파 시각화 실패. 파일 형식 또는 코덱을 확인하세요. (Audio visualization error: Failed to visualize waveform. Please check the file format or codec.)")
             st.divider()
 
 
     else:
-        st.info("파일을 업로드하면 결과가 표시됩니다.")
+        st.info("파일을 업로드하면 결과가 표시됩니다. (The results will be displayed after you upload a file.)")
