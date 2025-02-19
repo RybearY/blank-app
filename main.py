@@ -260,7 +260,7 @@ if st.session_state["start_button_clicked"] == True:
                     ax.set_title("Waveform with Noise Floor")
                     ax.set_xlabel("Time (seconds)")
                     ax.set_ylabel("Amplitude")
-                    ax.legend()
+                    ax.legend(loc="upper right")
                     st.pyplot(fig, use_container_width=True)
 
                 except Exception as e:
