@@ -3,6 +3,7 @@ import numpy as np
 import soundfile as sf
 import matplotlib.pyplot as plt
 import pandas as pd
+import filetype
 from copy import deepcopy
 from io import BytesIO
 
@@ -70,7 +71,7 @@ if st.session_state["start_button_clicked"] == True:
     st.header("1. 파일 업로드 (1. Upload file)", divider="red")
     # 여러 파일 업로드 위젯 (기존 코드와 동일)
     uploaded_files = st.file_uploader(
-        "오디오 파일(wav, mp3, aac)을 업로드하세요. (Upload audio files (wav, mp3, aac).)", type=["wav", "mp3", "aac"], accept_multiple_files=True
+        "오디오 파일(wav, mp3, flac)을 업로드하세요. (Upload audio files (wav, mp3, flac).)", type=["wav", "mp3", "flac"], accept_multiple_files=True
     )
 
     # 오디오 처리 Generator 함수
@@ -78,6 +79,22 @@ if st.session_state["start_button_clicked"] == True:
         for uploaded_file in uploaded_files:
             # Buffer 객체 얻기
             audio_buffer = BytesIO(uploaded_file.getvalue())
+
+            def validate_filetype(buffer):
+                validate_mimetypes = [
+                    "audio/mpeg",
+                    "audio/x-wav",
+                    "audio/x-aiff",
+                    "audio/x-flac",
+                    "audio/ogg"
+                ]
+                kind = filetype.guess(buffer)
+                if kind is None:
+                    return False, "The file format is not recognized."
+                mime_type = kind.mime
+                if mime_type not in validate_mimetypes:
+                    return False, f"The file format is not allowed.", mime_type.split("/")[-1].upper()
+                return True, "This is a valid audio file.", mime_type.split("/")[-1].upper()
 
             # 오디오 속성 분석 함수 (buffer 객체 입력으로 수정)
             def get_audio_properties_from_buffer(buffer):
@@ -165,43 +182,60 @@ if st.session_state["start_button_clicked"] == True:
                         return "True Stereo"
                 except Exception as e:
                     return f"Unknown (Error) {e}" # 또는 None 등 오류 표시
+            
+            # 파일 유효성 검사
+            is_valid_file, msg, file_type = validate_filetype(audio_buffer)
+            if not is_valid_file:
+                st.error(f"[{uploaded_file.name}]: " + msg)
+                yield {
+                    "Valid": "X",
+                    "Name": uploaded_file.name,
+                    "Time (sec)": "Error",
+                    "Format": file_type,
+                    "Sample Rate": "Error",
+                    "Bit Depth": "Error",
+                    "Channels": "Error",
+                    "Stereo Status": "Error",
+                    "Noise Floor (dBFS)": "Error",
+                }
+            else:
 
-            # 기본 속성 가져오기 (buffer 객체 전달)
-            properties = get_audio_properties_from_buffer(deepcopy(audio_buffer))
-            noise_floor_val = calculate_noise_floor_from_buffer(deepcopy(audio_buffer))
-            stereo_status = check_stereo_status_from_buffer(deepcopy(audio_buffer))
+                # 기본 속성 가져오기 (buffer 객체 전달)
+                properties = get_audio_properties_from_buffer(deepcopy(audio_buffer))
+                noise_floor_val = calculate_noise_floor_from_buffer(deepcopy(audio_buffer))
+                stereo_status = check_stereo_status_from_buffer(deepcopy(audio_buffer))
 
-            # 요구사항과 비교 (기존 코드와 동일, properties 및 검증 값은 buffer 기반 함수에서 얻음)
-            matches_format = uploaded_file.name.lower().endswith(required_format.lower())
-            matches_channels = properties["Channels"] == required_channels if properties["Channels"] != "Error" else False
-            matches_sample_rate = properties["Sample Rate"] == required_sample_rate if properties["Sample Rate"] != "Error" else False
-            matches_bit_depth = str(properties["Bit Depth"]) == str(required_bit_depth) if properties["Bit Depth"] != "Error" else False
-            matches_noise_floor = noise_floor_val >= required_noise_floor if isinstance(noise_floor_val, (int, float)) else False
-            matches_stereo_status = stereo_status == required_stereo_status if stereo_status != "Unknown (Error)" else False
+                # 요구사항과 비교 (기존 코드와 동일, properties 및 검증 값은 buffer 기반 함수에서 얻음)
+                matches_format = uploaded_file.name.lower().endswith(required_format.lower())
+                matches_channels = properties["Channels"] == required_channels if properties["Channels"] != "Error" else False
+                matches_sample_rate = properties["Sample Rate"] == required_sample_rate if properties["Sample Rate"] != "Error" else False
+                matches_bit_depth = str(properties["Bit Depth"]) == str(required_bit_depth) if properties["Bit Depth"] != "Error" else False
+                matches_noise_floor = noise_floor_val < required_noise_floor if isinstance(noise_floor_val, (int, float)) else False
+                matches_stereo_status = stereo_status == required_stereo_status if stereo_status != "Unknown (Error)" else False
 
-            matches_all = all(
-                [
-                    matches_format,
-                    matches_channels,
-                    matches_sample_rate,
-                    matches_bit_depth,
-                    matches_noise_floor,
-                    matches_stereo_status,
-                ]
-            )
+                matches_all = all(
+                    [
+                        matches_format,
+                        matches_channels,
+                        matches_sample_rate,
+                        matches_bit_depth,
+                        matches_noise_floor,
+                        matches_stereo_status,
+                    ]
+                )
 
-            # 결과 yield (결과 데이터 생성 방식은 기존 코드와 유사)
-            yield {
-                "Valid": "O" if matches_all else "X",
-                "Name": uploaded_file.name,
-                "Time (sec)": properties["Duration (seconds)"] if properties["Duration (seconds)"] != "Error (Processing Failed)" else "Error",
-                "Format": required_format if matches_format else f"{uploaded_file.name.split('.')[-1].upper()}",
-                "Sample Rate": f"{properties['Sample Rate']} Hz" if properties["Sample Rate"] != "Error" else "Error",
-                "Bit Depth": properties["Bit Depth"] if properties["Bit Depth"] != "Error" else "Error",
-                "Channels": properties["Channels"] if properties["Channels"] != "Error" else "Error",
-                "Stereo Status": stereo_status,
-                "Noise Floor (dBFS)": noise_floor_val if isinstance(noise_floor_val, (int, float)) else "Error",
-            }
+                # 결과 yield (결과 데이터 생성 방식은 기존 코드와 유사)
+                yield {
+                    "Valid": "O" if matches_all else "X",
+                    "Name": uploaded_file.name,
+                    "Time (sec)": properties["Duration (seconds)"] if properties["Duration (seconds)"] != "Error (Processing Failed)" else "Error",
+                    "Format": required_format if matches_format else f"{uploaded_file.name.split('.')[-1].upper()}",
+                    "Sample Rate": f"{properties['Sample Rate']} Hz" if properties["Sample Rate"] != "Error" else "Error",
+                    "Bit Depth": properties["Bit Depth"] if properties["Bit Depth"] != "Error" else "Error",
+                    "Channels": properties["Channels"] if properties["Channels"] != "Error" else "Error",
+                    "Stereo Status": stereo_status,
+                    "Noise Floor (dBFS)": noise_floor_val if isinstance(noise_floor_val, (int, float)) else "Error",
+                }
 
     if uploaded_files:
         results = []  # 결과를 저장할 리스트 (generator 결과를 모으기 위해)
@@ -228,7 +262,7 @@ if st.session_state["start_button_clicked"] == True:
                     green if row["Bit Depth"] == str(st.session_state["required_bit_depth"]) else red,
                     green if row["Channels"] == st.session_state["required_channels"] else red,
                     green if row["Stereo Status"] == st.session_state["required_stereo_status"] else red,
-                    green if row["Noise Floor (dBFS)"] < st.session_state["required_noise_floor"] else red
+                    red if row["Noise Floor (dBFS)"] == "Error" or row["Noise Floor (dBFS)"] >= st.session_state["required_noise_floor"] else green
                 ]
             return [None] * 3 + colors
 
