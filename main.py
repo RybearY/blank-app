@@ -9,13 +9,123 @@ from io import BytesIO
 
 st.set_page_config(page_title="Blank App", layout="wide")
 
+def validate_filetype(buffer):
+    validate_mimetypes = [
+        "audio/mpeg",
+        "audio/x-wav",
+        "audio/x-aiff",
+        "audio/x-flac",
+        "audio/ogg"
+    ]
+    kind = filetype.guess(buffer)
+    if kind is None:
+        return False, "The file format is not recognized."
+    mime_type = kind.mime
+    if mime_type not in validate_mimetypes:
+        return False, f"파일 형식이 잘못되었거나, 지원하지 않는 형식입니다. (Invalid or unsupported file format.)", mime_type.split("/")[-1].upper()
+    return True, "파일 분석 가능 (Analysis possible)", mime_type.split("/")[-1].upper()
+
+# 오디오 속성 분석 함수 (buffer 객체 입력으로 수정)
+def get_audio_properties_from_buffer(buffer):
+    try:
+        data, samplerate = sf.read(buffer) # soundfile은 buffer 객체에서 읽기 지원
+        bit_depth = 'Unknown'
+        if data.dtype == 'int16':
+            bit_depth = 16
+        elif data.dtype == 'int24':
+            bit_depth == 24
+        elif data.dtype == 'int32':
+            bit_depth = 32
+        elif data.dtype == 'float32':
+            bit_depth = '32 (float)'
+        elif data.dtype == 'float64':
+            bit_depth = '64 (float)'
+
+        channels = data.shape[1] if len(data.shape) > 1 else 1
+        duration = len(data) / samplerate
+
+        return {
+            "Sample Rate": samplerate,
+            "Channels": channels,
+            "Bit Depth": bit_depth,
+            "Duration (seconds)": round(duration, 2)
+        }
+    except Exception as e: # soundfile 오류 처리 (특히 MP3 파일)
+        return { # 기본적인 정보만 반환 (샘플레이트, 채널 정보는 불확실)
+            "Sample Rate": "Error",
+            "Channels": "Error",
+            "Bit Depth": "Error",
+            "Duration (seconds)": "Error (Processing Failed)"
+        }
+
+def calculate_noise_floor_from_buffer(buffer, silence_threshold_db=-60, frame_length=2048, hop_length=512):
+    try:
+        data, sr = sf.read(buffer)  # 오디오 파일 읽기
+    except sf.LibsndfileError as e:
+        print(f"Error reading audio file: {e}")
+        return None
+
+    # 다채널 오디오라면, 모노로 변환 (선택 사항)
+    if data.ndim > 1:
+        y = np.mean(data, axis=1)
+    else:
+        y = data
+
+    # 프레임 단위로 RMS 계산
+    num_frames = (len(y) - frame_length) // hop_length + 1
+    rms_values = np.zeros(num_frames)
+
+    for i in range(num_frames):
+        start = i * hop_length
+        end = start + frame_length
+        frame = y[start:end]
+        rms_values[i] = np.sqrt(np.mean(frame**2))
+
+    # dB 스케일로 변환 (무음 구간 찾기 위해)
+    epsilon = 1e-12
+    rms_db = 20 * np.log10((rms_values / np.max(np.abs(y))) + epsilon)
+
+    # 무음 구간 찾기
+    silent_frames = rms_db < silence_threshold_db
+
+    # 무음 구간 RMS 평균 (진폭 스케일) -> dBFS로 변환
+    if np.any(silent_frames):
+        noise_floor_rms = np.mean(rms_values[silent_frames])
+        noise_floor_dbfs = 20 * np.log10(noise_floor_rms / np.max(np.abs(y)) + epsilon)
+    else:
+        print("Warning: No silent frames found. Using minimum RMS.")
+        noise_floor_rms = np.min(rms_values)
+        noise_floor_dbfs = 20 * np.log10(noise_floor_rms / np.max(np.abs(y)) + epsilon)
+
+    return round(noise_floor_dbfs, 2)
+
+
+def check_stereo_status_from_buffer(buffer):
+    try:
+        data, _ = sf.read(buffer) # soundfile은 buffer 객체에서 읽기 지원
+        if len(data.shape) == 1:
+            return "Mono"
+        elif np.array_equal(data[:, 0], data[:, 1]):
+            return "Dual Mono"
+        else:
+            return "True Stereo"
+    except Exception as e:
+        return f"Unknown (Error) {e}" # 또는 None 등 오류 표시
+
 st.title("Audio Requirements Validator")
 st.markdown("업로드된 오디오 파일의 속성을 검증하고, 요구사항과 비교하여 결과를 제공합니다. (Verify the attributes of the uploaded audio file, compare them against the requirements, and provide the results.)")
 
-with st.container(border=True):
-    st.markdown("##### 사용 방법 (How to use)")
-    st.markdown('''1. 파일 요구사항 설정값 선택 (Select the file requirement settings)\n2. Save 버튼 클릭 (Click the Save button)\n3. 오디오 파일 업로드 (Upload audio files)\n4. 결과 확인 (Check the results)''')
-    st.markdown("새로운 파일 요구사항 설정 : Reset 버튼 클릭 (New file requirement settings: Click the Reset button)")
+info_col1, info_col2 = st.columns(2)
+with info_col1:
+    with st.container(border=True):
+        st.markdown("##### 사용 방법 (How to use)")
+        st.markdown('''1. 파일 요구사항 설정값 선택 (Select the file requirement settings)\n2. Save 버튼 클릭 (Click the Save button)\n3. 오디오 파일 업로드 (Upload audio files)\n4. 결과 확인 (Check the results)''')
+        st.markdown("새로운 파일 요구사항 설정 : Reset 버튼 클릭 (New file requirement settings: Click the Reset button)")
+with info_col2:
+    with st.container(border=True):
+        st.markdown("##### 참고 (Note)")
+        st.markdown('''업로드하신 파일의 형식이 결과표에 표시된 형식과 일치하지 않는 경우가 있습니다. 파일이 올바르게 변환되었는지, 손상되지 않았는지 확인하신 후 다시 업로드해주세요. 문제가 계속될 경우, 다른 형식으로 변환하여 시도해 보시거나, 원본 파일을 다시 다운로드하여 업로드해 주시기 바랍니다.''')
+        st.markdown('''There may be a discrepancy between the format of the file you uploaded and the format displayed in the results table. Please ensure that the file has been converted correctly and is not corrupted before re-uploading. If the issue persists, try converting the file to a different format or re-download the original file and upload it again.''')
 
 if not st.session_state.get("disabled"):
     st.session_state.disabled = False
@@ -45,6 +155,7 @@ required_noise_floor = st.sidebar.slider("Noise Floor (dBFS)", min_value=-100, m
 required_stereo_status = st.sidebar.selectbox(
     "Stereo Status", ["Dual Mono", "Mono", "True Stereo", "Joint Stereo"], disabled=st.session_state.disabled
 )
+
 sidebar_col1, sidebar_col2 = st.sidebar.columns(2)
 with sidebar_col1:
     required_start_button = st.sidebar.button("Save", key="start_button", use_container_width=True)
@@ -80,109 +191,6 @@ if st.session_state["start_button_clicked"] == True:
             # Buffer 객체 얻기
             audio_buffer = BytesIO(uploaded_file.getvalue())
 
-            def validate_filetype(buffer):
-                validate_mimetypes = [
-                    "audio/mpeg",
-                    "audio/x-wav",
-                    "audio/x-aiff",
-                    "audio/x-flac",
-                    "audio/ogg"
-                ]
-                kind = filetype.guess(buffer)
-                if kind is None:
-                    return False, "The file format is not recognized."
-                mime_type = kind.mime
-                if mime_type not in validate_mimetypes:
-                    return False, f"파일 형식이 잘못되었거나, 지원하지 않는 형식입니다. (Invalid or unsupported file format.)", mime_type.split("/")[-1].upper()
-                return True, "파일 분석 가능 (Analysis possible)", mime_type.split("/")[-1].upper()
-
-            # 오디오 속성 분석 함수 (buffer 객체 입력으로 수정)
-            def get_audio_properties_from_buffer(buffer):
-                try:
-                    data, samplerate = sf.read(buffer) # soundfile은 buffer 객체에서 읽기 지원
-                    bit_depth = 'Unknown'
-                    if data.dtype == 'int16':
-                        bit_depth = 16
-                    elif data.dtype == 'int24':
-                        bit_depth == 24
-                    elif data.dtype == 'int32':
-                        bit_depth = 32
-                    elif data.dtype == 'float32':
-                        bit_depth = '32 (float)'
-                    elif data.dtype == 'float64':
-                        bit_depth = '64 (float)'
-
-                    channels = data.shape[1] if len(data.shape) > 1 else 1
-                    duration = len(data) / samplerate
-
-                    return {
-                        "Sample Rate": samplerate,
-                        "Channels": channels,
-                        "Bit Depth": bit_depth,
-                        "Duration (seconds)": round(duration, 2)
-                    }
-                except Exception as e: # soundfile 오류 처리 (특히 MP3 파일)
-                    return { # 기본적인 정보만 반환 (샘플레이트, 채널 정보는 불확실)
-                        "Sample Rate": "Error",
-                        "Channels": "Error",
-                        "Bit Depth": "Error",
-                        "Duration (seconds)": "Error (Processing Failed)"
-                    }
-
-            def calculate_noise_floor_from_buffer(buffer, silence_threshold_db=-60, frame_length=2048, hop_length=512):
-                try:
-                    data, sr = sf.read(buffer)  # 오디오 파일 읽기
-                except sf.LibsndfileError as e:
-                    print(f"Error reading audio file: {e}")
-                    return None
-
-                # 다채널 오디오라면, 모노로 변환 (선택 사항)
-                if data.ndim > 1:
-                    y = np.mean(data, axis=1)
-                else:
-                    y = data
-
-                # 프레임 단위로 RMS 계산
-                num_frames = (len(y) - frame_length) // hop_length + 1
-                rms_values = np.zeros(num_frames)
-
-                for i in range(num_frames):
-                    start = i * hop_length
-                    end = start + frame_length
-                    frame = y[start:end]
-                    rms_values[i] = np.sqrt(np.mean(frame**2))
-
-                # dB 스케일로 변환 (무음 구간 찾기 위해)
-                epsilon = 1e-12
-                rms_db = 20 * np.log10((rms_values / np.max(np.abs(y))) + epsilon)
-
-                # 무음 구간 찾기
-                silent_frames = rms_db < silence_threshold_db
-
-                # 무음 구간 RMS 평균 (진폭 스케일) -> dBFS로 변환
-                if np.any(silent_frames):
-                    noise_floor_rms = np.mean(rms_values[silent_frames])
-                    noise_floor_dbfs = 20 * np.log10(noise_floor_rms / np.max(np.abs(y)) + epsilon)
-                else:
-                    print("Warning: No silent frames found. Using minimum RMS.")
-                    noise_floor_rms = np.min(rms_values)
-                    noise_floor_dbfs = 20 * np.log10(noise_floor_rms / np.max(np.abs(y)) + epsilon)
-
-                return round(noise_floor_dbfs, 2)
-
-
-            def check_stereo_status_from_buffer(buffer):
-                try:
-                    data, _ = sf.read(buffer) # soundfile은 buffer 객체에서 읽기 지원
-                    if len(data.shape) == 1:
-                        return "Mono"
-                    elif np.array_equal(data[:, 0], data[:, 1]):
-                        return "Dual Mono"
-                    else:
-                        return "True Stereo"
-                except Exception as e:
-                    return f"Unknown (Error) {e}" # 또는 None 등 오류 표시
-            
             # 파일 유효성 검사
             is_valid_file, msg, file_type = validate_filetype(audio_buffer)
             if not is_valid_file:
