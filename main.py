@@ -256,7 +256,7 @@ if st.session_state["start_button_clicked"] == True:
             if row['Valid'] == "O":
                 colors = [green] * 6
             elif row["Time (sec)"] == "Error":
-                colors = [red] * len(row)
+                return [red] * len(row)
             else:
                 colors = [
                     green if row["Format"] == st.session_state["required_format"] else red,
