@@ -93,8 +93,8 @@ if st.session_state["start_button_clicked"] == True:
                     return False, "The file format is not recognized."
                 mime_type = kind.mime
                 if mime_type not in validate_mimetypes:
-                    return False, f"The file format is not allowed.", mime_type.split("/")[-1].upper()
-                return True, "This is a valid audio file.", mime_type.split("/")[-1].upper()
+                    return False, f"파일 형식이 잘못되었거나, 지원하지 않는 형식입니다. (Invalid or unsupported file format.)", mime_type.split("/")[-1].upper()
+                return True, "파일 분석 가능 (Analysis possible)", mime_type.split("/")[-1].upper()
 
             # 오디오 속성 분석 함수 (buffer 객체 입력으로 수정)
             def get_audio_properties_from_buffer(buffer):
