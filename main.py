@@ -1,5 +1,6 @@
 import streamlit as st
 import numpy as np
+import librosa
 import soundfile as sf
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -23,40 +24,35 @@ def validate_filetype(buffer):
     mime_type = kind.mime
     if mime_type not in validate_mimetypes:
         return False, f"파일 형식이 잘못되었거나, 지원하지 않는 형식입니다. (Invalid or unsupported file format.)", mime_type.split("/")[-1].upper()
-    return True, "파일 분석 가능 (Analysis possible)", mime_type.split("/")[-1].upper()
+    return True, "파일 분석 가능 (Analysis possible)", mime_type.split("/")[-1].split('-')[-1].upper()
 
 # 오디오 속성 분석 함수 (buffer 객체 입력으로 수정)
 def get_audio_properties_from_buffer(buffer):
-    try:
-        data, samplerate = sf.read(buffer) # soundfile은 buffer 객체에서 읽기 지원
-        bit_depth = 'Unknown'
-        if data.dtype == 'int16':
-            bit_depth = 16
-        elif data.dtype == 'int24':
-            bit_depth == 24
-        elif data.dtype == 'int32':
-            bit_depth = 32
-        elif data.dtype == 'float32':
-            bit_depth = '32 (float)'
-        elif data.dtype == 'float64':
-            bit_depth = '64 (float)'
+    with sf.SoundFile(buffer, 'r') as f:
+        try:
+            data = f.read()
+            subtype = f.subtype
+            if 'PCM_' in subtype:
+                bit_depth = subtype.replace('PCM_', '')
+            else:
+                bit_depth = 'Unknown'
+            samplerate = f.samplerate
+            channels = f.channels
+            duration = len(data) / samplerate
 
-        channels = data.shape[1] if len(data.shape) > 1 else 1
-        duration = len(data) / samplerate
-
-        return {
-            "Sample Rate": samplerate,
-            "Channels": channels,
-            "Bit Depth": bit_depth,
-            "Duration (seconds)": round(duration, 2)
-        }
-    except Exception as e: # soundfile 오류 처리 (특히 MP3 파일)
-        return { # 기본적인 정보만 반환 (샘플레이트, 채널 정보는 불확실)
-            "Sample Rate": "Error",
-            "Channels": "Error",
-            "Bit Depth": "Error",
-            "Duration (seconds)": "Error (Processing Failed)"
-        }
+            return {
+                "Sample Rate": samplerate,
+                "Channels": channels,
+                "Bit Depth": bit_depth,
+                "Duration (seconds)": round(duration, 2)
+            }
+        except Exception as e: # soundfile 오류 처리 (특히 MP3 파일)
+            return { # 기본적인 정보만 반환 (샘플레이트, 채널 정보는 불확실)
+                "Sample Rate": "Error",
+                "Channels": "Error",
+                "Bit Depth": "Error",
+                "Duration (seconds)": "Error (Processing Failed)"
+            }
 
 def calculate_noise_floor_from_buffer(buffer, silence_threshold_db=-60, frame_length=2048, hop_length=512):
     try:
@@ -99,7 +95,6 @@ def calculate_noise_floor_from_buffer(buffer, silence_threshold_db=-60, frame_le
 
     return round(noise_floor_dbfs, 2)
 
-
 def check_stereo_status_from_buffer(buffer):
     try:
         data, _ = sf.read(buffer) # soundfile은 buffer 객체에서 읽기 지원
@@ -111,6 +106,29 @@ def check_stereo_status_from_buffer(buffer):
             return "True Stereo"
     except Exception as e:
         return f"Unknown (Error) {e}" # 또는 None 등 오류 표시
+    
+def convert_audio(input_buffer, target_sr, target_bit_depth, target_format='WAV', mono=True):
+    output_buffer = BytesIO()
+    try:
+
+        y, sr = librosa.load(input_buffer, sr=None, mono=mono) # sr=None으로 원본 샘플레이트 유지
+        print(sr)
+        if sr != target_sr:
+            y_resampled = librosa.resample(y, orig_sr=sr, target_sr=target_sr, res_type='soxr_vhq')
+        else:
+            y_resampled = y # 샘플레이트가 이미 목표 샘플레이트와 같으면 리샘플링 생략
+
+        if target_format == "WAV" or target_format == "FLAC":
+            subtype = f"PCM_{target_bit_depth}"
+        else:
+            subtype = None
+
+        sf.write(output_buffer, y_resampled, target_sr, format=target_format, subtype=subtype) # WAV, FLAC: PCM_24 권장
+        output_buffer.seek(0)
+
+        return output_buffer
+    except Exception as e:
+        print(f"오류 발생: {e}")
 
 st.title("Audio Requirements Validator")
 st.markdown("업로드된 오디오 파일의 속성을 검증하고, 요구사항과 비교하여 결과를 제공합니다. (Verify the attributes of the uploaded audio file, compare them against the requirements, and provide the results.)")
@@ -150,7 +168,7 @@ st.sidebar.header("파일 요구사항 설정 (File requirements settings)")
 required_format = st.sidebar.selectbox("Format", ["WAV", "MP3", "AAC"], disabled=st.session_state.disabled)
 required_channels = st.sidebar.selectbox("Channels", [1, 2], disabled=st.session_state.disabled)
 required_sample_rate = st.sidebar.selectbox("Sample Rate (Hz)", [44100, 48000, 96000, 192000], disabled=st.session_state.disabled)
-required_bit_depth = st.sidebar.selectbox("Bit Depth", [16, 24, 32, "32 (float)", "64 (float)"], disabled=st.session_state.disabled)
+required_bit_depth = st.sidebar.selectbox("Bit Depth", [16, 24, 32], disabled=st.session_state.disabled)
 required_noise_floor = st.sidebar.slider("Noise Floor (dBFS)", min_value=-100, max_value=0, value=-60, disabled=st.session_state.disabled)
 required_stereo_status = st.sidebar.selectbox(
     "Stereo Status", ["Dual Mono", "Mono", "True Stereo", "Joint Stereo"], disabled=st.session_state.disabled
@@ -189,7 +207,10 @@ if st.session_state["start_button_clicked"] == True:
     def process_audio_files_generator(uploaded_files):
         for uploaded_file in uploaded_files:
             # Buffer 객체 얻기
-            audio_buffer = BytesIO(uploaded_file.getvalue())
+            if isinstance(uploaded_file, BytesIO):
+                audio_buffer = uploaded_file
+            else:
+                audio_buffer = BytesIO(uploaded_file.getvalue())
 
             # 파일 유효성 검사
             is_valid_file, msg, file_type = validate_filetype(audio_buffer)
@@ -214,7 +235,8 @@ if st.session_state["start_button_clicked"] == True:
                 stereo_status = check_stereo_status_from_buffer(deepcopy(audio_buffer))
 
                 # 요구사항과 비교 (기존 코드와 동일, properties 및 검증 값은 buffer 기반 함수에서 얻음)
-                matches_format = uploaded_file.name.lower().endswith(required_format.lower())
+                # matches_format = uploaded_file.name.lower().endswith(required_format.lower())
+                matches_format = file_type.lower() == required_format.lower()
                 matches_channels = properties["Channels"] == required_channels if properties["Channels"] != "Error" else False
                 matches_sample_rate = properties["Sample Rate"] == required_sample_rate if properties["Sample Rate"] != "Error" else False
                 matches_bit_depth = str(properties["Bit Depth"]) == str(required_bit_depth) if properties["Bit Depth"] != "Error" else False
@@ -233,17 +255,29 @@ if st.session_state["start_button_clicked"] == True:
                 )
 
                 # 결과 yield (결과 데이터 생성 방식은 기존 코드와 유사)
-                yield {
-                    "Valid": "O" if matches_all else "X",
-                    "Name": uploaded_file.name,
-                    "Time (sec)": properties["Duration (seconds)"] if properties["Duration (seconds)"] != "Error (Processing Failed)" else "Error",
-                    "Format": required_format if matches_format else f"{uploaded_file.name.split('.')[-1].upper()}",
-                    "Sample Rate": f"{properties['Sample Rate']} Hz" if properties["Sample Rate"] != "Error" else "Error",
-                    "Bit Depth": properties["Bit Depth"] if properties["Bit Depth"] != "Error" else "Error",
-                    "Channels": properties["Channels"] if properties["Channels"] != "Error" else "Error",
-                    "Stereo Status": stereo_status,
-                    "Noise Floor (dBFS)": noise_floor_val if isinstance(noise_floor_val, (int, float)) else "Error",
-                }
+                if isinstance(uploaded_file, BytesIO):
+                    yield {
+                        "Valid": "O" if matches_all else "X",
+                        "Time (sec)": properties["Duration (seconds)"] if properties["Duration (seconds)"] != "Error (Processing Failed)" else "Error",
+                        "Format": required_format if matches_format else f"{uploaded_file.name.split('.')[-1].upper()}",
+                        "Sample Rate": f"{properties['Sample Rate']} Hz" if properties["Sample Rate"] != "Error" else "Error",
+                        "Bit Depth": properties["Bit Depth"] if properties["Bit Depth"] != "Error" else "Error",
+                        "Channels": properties["Channels"] if properties["Channels"] != "Error" else "Error",
+                        "Stereo Status": stereo_status,
+                        "Noise Floor (dBFS)": noise_floor_val if isinstance(noise_floor_val, (int, float)) else "Error",
+                    }
+                else:
+                    yield {
+                        "Valid": "O" if matches_all else "X",
+                        "Name": uploaded_file.name,
+                        "Time (sec)": properties["Duration (seconds)"] if properties["Duration (seconds)"] != "Error (Processing Failed)" else "Error",
+                        "Format": required_format if matches_format else f"{uploaded_file.name.split('.')[-1].upper()}",
+                        "Sample Rate": f"{properties['Sample Rate']} Hz" if properties["Sample Rate"] != "Error" else "Error",
+                        "Bit Depth": properties["Bit Depth"] if properties["Bit Depth"] != "Error" else "Error",
+                        "Channels": properties["Channels"] if properties["Channels"] != "Error" else "Error",
+                        "Stereo Status": stereo_status,
+                        "Noise Floor (dBFS)": noise_floor_val if isinstance(noise_floor_val, (int, float)) else "Error",
+                    }
 
     if uploaded_files:
         results = []  # 결과를 저장할 리스트 (generator 결과를 모으기 위해)
@@ -274,7 +308,7 @@ if st.session_state["start_button_clicked"] == True:
                     green if row["Stereo Status"] == st.session_state["required_stereo_status"] else red,
                     red if row["Noise Floor (dBFS)"] == "Error" or row["Noise Floor (dBFS)"] >= st.session_state["required_noise_floor"] else green
                 ]
-            return [None] * 3 + colors
+            return [None] * (len(row) - 6) + colors
 
         styled_df_results = df_results.style.apply(highlight_rows, axis=1).format(precision=2)
         st.table(styled_df_results)
@@ -285,11 +319,43 @@ if st.session_state["start_button_clicked"] == True:
             st.write(f"##### {idx}. {uploaded_file.name}")
             # **노이즈 음파 시각화 (buffer 객체 사용, torchaudio 사용하는 예시)**
             col1, col2 = st.columns([0.3, 0.7], vertical_alignment="center")
+            audio_buffer = BytesIO(uploaded_file.getvalue())
             with col1:
+                each_df_cols = ["Valid", "Time (sec)", "Format", "Sample Rate", "Bit Depth", "Channels", "Stereo Status", "Noise Floor (dBFS)"]
+                each_df = df_results.loc[idx:idx, each_df_cols]
+                if df_results.loc[idx, "Valid"] == "X":
+                    changed_results = []
+                    output_buffer = convert_audio(
+                        input_buffer=deepcopy(audio_buffer),
+                        target_sr=st.session_state["required_sample_rate"],
+                        target_bit_depth=st.session_state["required_bit_depth"],
+                        target_format=st.session_state["required_format"]
+                    )
+                    for changed_result in process_audio_files_generator([deepcopy(output_buffer)]):
+                        changed_results.append(changed_result)
+                    changed_df = pd.DataFrame(changed_results).reset_index(drop=True).loc[:, each_df_cols]
+                    each_df = pd.concat([each_df, changed_df]).reset_index(drop=True)
+                
+                st.table(each_df.style.apply(highlight_rows, axis=1))
+                st.markdown("- 원본 오디오 (Original Audio)")
                 st.audio(uploaded_file)
+                if len(each_df) > 1:
+                    st.markdown("- 변환된 오디오 (Converted Audio)")
+                    st.audio(output_buffer)
+                
+                # st.table(df_results.loc[idx:idx, ["Valid", "Time (sec)", "Format", "Sample Rate", "Bit Depth", "Channels", "Stereo Status", "Noise Floor (dBFS)"]].style.apply(highlight_rows, axis=1))
+                # st.write("원본 오디오")
+                # st.audio(uploaded_file)
+                # if df_results.loc[idx, "Valid"] == "X":
+                #     st.write("변환된 오디오")
+                #     output_buffer = convert_audio(
+                #         input_buffer=deepcopy(audio_buffer),
+                #         target_sr=st.session_state["required_sample_rate"],
+                #         target_format=st.session_state["required_format"]
+                #     )
+                #     st.audio(output_buffer)
             with col2:
                 try:
-                    audio_buffer = BytesIO(uploaded_file.getvalue())
                     data, samplerate = sf.read(audio_buffer)
 
                     if data.ndim > 1:
