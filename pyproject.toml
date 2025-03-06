@@ -16,6 +16,8 @@ pandas = "^2.2.3"
 ipykernel = "^6.29.5"
 soundfile = "^0.13.1"
 filetype = "^1.2.0"
+librosa = "^0.10.2.post1"
+resampy = "^0.4.3"
 
 
 [build-system]
