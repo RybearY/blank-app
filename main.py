@@ -336,7 +336,7 @@ if st.session_state["start_button_clicked"] == True:
                     changed_df = pd.DataFrame(changed_results).reset_index(drop=True).loc[:, each_df_cols]
                     each_df = pd.concat([each_df, changed_df]).reset_index(drop=True)
                 
-                st.table(each_df.style.apply(highlight_rows, axis=1))
+                st.table(each_df.style.apply(highlight_rows, axis=1).format(precision=2))
                 st.markdown("- 원본 오디오 (Original Audio)")
                 st.audio(uploaded_file)
                 if len(each_df) > 1:
