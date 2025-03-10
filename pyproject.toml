@@ -18,6 +18,7 @@ soundfile = "^0.13.1"
 filetype = "^1.2.0"
 librosa = "^0.10.2.post1"
 resampy = "^0.4.3"
+pydub = "^0.25.1"
 
 
 [build-system]
