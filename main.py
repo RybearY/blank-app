@@ -1,6 +1,7 @@
 import streamlit as st
 import numpy as np
 import librosa
+import os
 import soundfile as sf
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -12,6 +13,24 @@ from io import BytesIO
 
 from blankapp.check import highlight_rows, process_audio_files_generator
 from blankapp.convert import convert_audio, get_audio_zip_file
+
+@st.fragment
+def download_zip_fragment():
+    if st.session_state["audio_zip_download"]:
+        st.download_button(
+            label = "zip 파일 다운로드 (Download Zip file)",
+            data = st.session_state["audio_zip_file"].getvalue(),
+            file_name = "converted_audio.zip",
+            mime="application/zip",
+            disabled=not st.session_state["audio_zip_download"], 
+            key="audio_zip_download_button"
+        )
+    else:
+        st.markdown("zip 파일 생성 중입니다. 잠시 후 다시 클릭해주세요. (Creating zip file. Please click again later.)")
+
+def download_button():
+    if st.button("Download"):
+        download_zip_fragment()
 
 st.set_page_config(page_title="Blank App", layout="wide")
 
@@ -73,17 +92,22 @@ if required_start_button:
     st.session_state["required_noise_floor"] = required_noise_floor
     st.session_state["required_stereo_status"] = required_stereo_status
 
-    st.session_state["audio_zip_files"] = []
+    st.session_state["audio_zip_file"] = None
+    st.session_state["audio_download_files"] = {}
     st.session_state["audio_zip_download"] = False
 
     st.session_state["start_button_clicked"] = True
-    st.session_state.disabled = True
+    st.session_state["disabled"] = True
     st.rerun()
 if required_new_button:
     st.session_state["start_button_clicked"] = False
     st.session_state["disabled"] = False
+
+    st.session_state["audio_zip_file"] = None
+    st.session_state["audio_download_files"] = {}
+    st.session_state["audio_zip_download"] = False
     st.rerun()
-    
+
 if st.session_state["start_button_clicked"] == True:
     st.header("1. 파일 업로드 (1. Upload file)", divider="red")
     # 여러 파일 업로드 위젯 (기존 코드와 동일)
@@ -106,9 +130,11 @@ if st.session_state["start_button_clicked"] == True:
         styled_df_results = df_results.style.apply(highlight_rows, axis=1).format(precision=2)
         st.table(styled_df_results)
 
+        download_button()
+
         st.subheader("2.2 미리듣기 및 파형 (Preview and waveform)", divider="orange")
         for idx, uploaded_file in enumerate(uploaded_files):
-            audio_download_files = []
+            
             # **미리 듣기 (기존 코드와 동일)**
             st.write(f"##### {idx}. {uploaded_file.name}")
             # **노이즈 음파 시각화 (buffer 객체 사용, torchaudio 사용하는 예시)**
@@ -137,10 +163,10 @@ if st.session_state["start_button_clicked"] == True:
                 if len(each_df) > 1:
                     st.markdown("- 변환된 오디오 (Converted Audio)")
                     st.audio(output_buffer)
-                    audio_download_files.append((uploaded_file.name, output_buffer))
+                    converted_filename = os.path.splitext(uploaded_file.name)[0] + f".{required_format.lower()}"
+                    st.session_state["audio_download_files"].update({uploaded_file.name : output_buffer})
                 else:
-                    audio_download_files.append((uploaded_file.name, BytesIO(uploaded_file.getvalue())))
-                
+                    st.session_state["audio_download_files"].update({uploaded_file.name : BytesIO(uploaded_file.getvalue())})
 
             with col2:
                 try:
@@ -168,9 +194,16 @@ if st.session_state["start_button_clicked"] == True:
 
                 except Exception as e:
                     st.error(f"음파 시각화 오류: 음파 시각화 실패. 파일 형식 또는 코덱을 확인하세요. (Audio visualization error: Failed to visualize waveform. Please check the file format or codec.)")
-            
-             
+        
+        zip_buffer, zip_error_files = get_audio_zip_file(list(st.session_state["audio_download_files"].items()))
+        if isinstance(zip_buffer, str):
+            st.error(zip_buffer)
+        else:
+            st.session_state["audio_zip_file"] = zip_buffer
+            st.session_state["audio_zip_download"] = True
+            if zip_error_files:
+                st.error(f"압축 실패 파일 (List of files that failed to compress.): {zip_error_files}")
 
-            st.divider()
+        st.divider()
     else:
         st.info("파일을 업로드하면 결과가 표시됩니다. (The results will be displayed after you upload a file.)")

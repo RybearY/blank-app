@@ -48,4 +48,4 @@ def get_audio_zip_file(audio_buffer_list : list[BytesIO]):
                     continue
         return (zip_buffer, error_files)
     except Exception as e:
-        return f"Zip Error: {e}"
+        return (f"Zip Error: {e}", error_files)
