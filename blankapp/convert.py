@@ -1,6 +1,7 @@
 import librosa
 import zipfile
 import soundfile as sf
+import base64
 from soundfile import LibsndfileError
 from pydub import AudioSegment
 from copy import deepcopy
