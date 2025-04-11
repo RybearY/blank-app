@@ -27,7 +27,6 @@
       "onAutoForward": "openPreview"
     }
   },
-  "forwardPorts": [
-    8501
-  ]
+  "forwardPorts": [8501],
+  "postStartCommand": "streamlit run main.py --server.enableCORS false --server.enableXsrfProtection false --server.address 0.0.0.0"
 }
