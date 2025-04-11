@@ -7,3 +7,10 @@ port = 8501
 [browser]
 serverAddress = "0.0.0.0"
 serverPort = 8501
+
+[theme]
+primaryColor = "#F63366"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "##3d4aad"
+textColor = "#262730"
+font = "prentendard"

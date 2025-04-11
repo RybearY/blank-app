@@ -334,8 +334,8 @@ if st.session_state["start_button_clicked"] == True:
             results.append(result)
 
         # **결과를 표 형태로 출력 (기존 코드와 동일)**
-        st.header("2. 파일 검증 결과 (File verification results)", divider="red")
-        st.subheader("2.1 결과표 (Results table)", divider="orange")
+        st.header("2. QA Results", divider="blue")
+        st.subheader("2.1 File Details", divider="blue")
         df_results = pd.DataFrame(results).reset_index(drop=True)
 
         def highlight_rows(row):
@@ -360,12 +360,12 @@ if st.session_state["start_button_clicked"] == True:
         styled_df_results = df_results.style.apply(highlight_rows, axis=1).format(precision=2)
         st.table(styled_df_results)
 
-        st.subheader("2.2 미리듣기 및 파형 (Preview and waveform)", divider="orange")
+        st.subheader("2.2 Preview and Waveform", divider="blue")
         for idx, uploaded_file in enumerate(uploaded_files):
             # **미리 듣기 (기존 코드와 동일)**
             st.write(f"##### {idx}. {uploaded_file.name}")
             # **노이즈 음파 시각화 (buffer 객체 사용, torchaudio 사용하는 예시)**
-            col1, col2 = st.columns([0.3, 0.7], vertical_alignment="center")
+            col1, col2 = st.columns([0.7, 0.7], vertical_alignment="center")
             
             audio_buffer = BytesIO(uploaded_file.getvalue())
             with col1:
@@ -388,8 +388,20 @@ if st.session_state["start_button_clicked"] == True:
                 st.markdown("- 원본 오디오 (Original Audio)")
                 st.audio(uploaded_file)
                 if len(each_df) > 1:
-                    st.markdown("- 변환된 오디오 (Converted Audio)")
+                    base_name = uploaded_file.name.rsplit('.', 1)[0]
+                    converted_filename = f"{base_name}_VanillaX.{st.session_state['required_format'].lower()}"
+                    
+                    # 변환된 오디오 표시
+                    st.markdown(f"- 변환된 오디오 (Converted Audio): **{converted_filename}**")
                     st.audio(output_buffer)
+                    
+                    # 다운로드 버튼 추가
+                    st.download_button(
+                        label="Download",
+                        data=output_buffer.getvalue(),
+                        file_name=converted_filename,
+                        mime=f"audio/{st.session_state['required_format'].lower()}"
+    )
                 
                 # st.table(df_results.loc[idx:idx, ["Valid", "Time (sec)", "Format", "Sample Rate", "Bit Depth", "Channels", "Stereo Status", "Noise Floor (dBFS)"]].style.apply(highlight_rows, axis=1))
                 # st.write("원본 오디오")
@@ -414,7 +426,7 @@ if st.session_state["start_button_clicked"] == True:
                     if data.ndim > 1:
                         data = data[:, 0]
 
-                    fig, ax = plt.subplots(figsize=(10, 2))
+                    fig, ax = plt.subplots(figsize=(6, 2))
                     time_axis = np.linspace(0, len(data) / samplerate, num=len(data))
                     ax.plot(time_axis, data, color='royalblue', linewidth=0.7)
                     ax.axhline(y=10**(required_noise_floor/20), color='red', linestyle='--', label="Required Noise Floor")
