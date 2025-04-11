@@ -24,3 +24,8 @@ pydub = "^0.25.1"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+
+[server]
+enableCORS = false
+enableXsrfProtection = false

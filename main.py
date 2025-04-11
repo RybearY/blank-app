@@ -186,7 +186,7 @@ def convert_audio(input_buffer, target_sr, target_bit_depth, target_format='WAV'
         print(f"오류 발생: {e}")
 
 st.title("Audio Requirements Validator")
-st.markdown("업로드된 오디오 파일의 속성을 검증하고, 요구사항과 비교하여 결과를 제공합니다. (Verify the attributes of the uploaded audio file, compare them against the requirements, and provide the results.)")
+st.markdown("Verify the attributes of the uploaded audio file, compare them against the requirements, and provide the results.")
 
 info_col1, info_col2 = st.columns(2)
 with info_col1:
@@ -219,7 +219,7 @@ if not st.session_state.get("required_stereo_status"):
     st.session_state["required_stereo_status"] = None
 
 # 파일 요구사항 설정 (기존 코드와 동일)
-st.sidebar.header("파일 요구사항 설정 (File requirements settings)")
+st.sidebar.header("File requirements settings")
 required_format = st.sidebar.selectbox("Format", ["WAV", "MP3", "AAC"], disabled=st.session_state.disabled)
 required_channels = st.sidebar.selectbox("Channels", [1, 2], disabled=st.session_state.disabled)
 required_sample_rate = st.sidebar.selectbox("Sample Rate (Hz)", [44100, 48000, 96000, 192000], disabled=st.session_state.disabled)
